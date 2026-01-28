@@ -25,7 +25,8 @@ export function useHighPerformanceScreenshots() {
 
         const mp4boxfile = MP4Box.createFile()
         let videoDecoder: VideoDecoder | null = null
-        // Removed shared canvas
+        // Reusable canvas to prevent memory thrashing
+        let sharedCanvas: OffscreenCanvas | null = null
 
         return new Promise((resolve, reject) => {
             const results: { [key: number]: string } = {}
@@ -33,6 +34,8 @@ export function useHighPerformanceScreenshots() {
             let videoTrack: any = null
             const allSamples: any[] = []
             let isFinished = false
+            let readyFired = false
+            let fileFullyRead = false
 
             // Safety timeout: unexpected hangs shouldn't freeze the UI forever
             const timeoutId = setTimeout(() => {
@@ -80,6 +83,7 @@ export function useHighPerformanceScreenshots() {
 
             mp4boxfile.onReady = (info: any) => {
                 hasReady = true
+                readyFired = true
                 videoTrack = info.videoTracks[0]
                 // ... (rest of onReady logic)
 
@@ -91,7 +95,10 @@ export function useHighPerformanceScreenshots() {
 
                 console.log('Full Track found:', !!fullTrack)
 
-                const description = toDesc(fullTrack || videoTrack)
+                const description = toDesc(fullTrack)
+
+                // Initialize shared canvas once we know dimensions
+                sharedCanvas = new OffscreenCanvas(videoTrack.video.width, videoTrack.video.height)
 
 
                 console.log('Video Track Info:', {
@@ -101,8 +108,9 @@ export function useHighPerformanceScreenshots() {
                     hasDescription: !!description
                 })
 
-                if (!description && (videoTrack.codec.startsWith('avc1') || videoTrack.codec.startsWith('hvc1'))) {
-                    const msg = `Failed to extract decoder description for codec ${videoTrack.codec}`
+                if (!description && (videoTrack.codec.startsWith('avc1') || videoTrack.codec.startsWith('hvc1') || videoTrack.codec.startsWith('hev1'))) {
+                    const msg = `Failed to extract decoder description for codec ${videoTrack.codec}. This may be due to an unsupported file structure.`
+                    console.error(msg)
                     error.value = msg
                     reject(new Error(msg))
                     return
@@ -117,14 +125,19 @@ export function useHighPerformanceScreenshots() {
 
                         for (const event of events) {
                             if (Math.abs(frameTimeSeconds - event.timestamp_seconds) < 0.1) {
-                                if (!results[event.timestamp_seconds]) {
-                                    // Render to NEW canvas to avoid races
-                                    const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight)
-                                    const ctx = canvas.getContext('2d')
+                                if (!results[event.timestamp_seconds] && sharedCanvas) {
+                                    // Reuse shared canvas to prevent memory thrashing
+                                    const ctx = sharedCanvas.getContext('2d')
 
                                     if (ctx) {
+                                        // Resize canvas if needed (handles variable frame sizes)
+                                        if (sharedCanvas.width !== frame.displayWidth || sharedCanvas.height !== frame.displayHeight) {
+                                            sharedCanvas.width = frame.displayWidth
+                                            sharedCanvas.height = frame.displayHeight
+                                        }
+
                                         ctx.drawImage(frame, 0, 0)
-                                        canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }).then(blob => {
+                                        sharedCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 }).then(blob => {
                                             const reader = new FileReader()
                                             reader.onloadend = () => {
                                                 if (!results[event.timestamp_seconds]) {
@@ -160,36 +173,39 @@ export function useHighPerformanceScreenshots() {
 
                 mp4boxfile.setExtractionOptions(videoTrack.id, 'video', { nbSamples: 10000 }) // Extract all samples
                 mp4boxfile.start()
+
+                // If file is already fully read, process now (handles moov at end of file)
+                if (fileFullyRead) {
+                    processAllSamples()
+                }
             }
 
             mp4boxfile.onSamples = (_id: number, _user: any, samples: any[]) => {
                 allSamples.push(...samples)
             }
 
-            const processAllSamples = () => {
+            const processAllSamples = async () => {
                 const samples = allSamples
-                // Determine which samples we actually need to decode.
-                // For each target timestamp, find the sample.
-                // Then find the previous keyframe (sync sample).
-                // Feed samples from keyframe -> target sample into decoder.
 
-                // Optimized approach: Sort samples by time.
-                // Identify ranges of samples needed.
+                if (samples.length === 0) {
+                    console.warn('No samples to process')
+                    finish()
+                    return
+                }
 
-                const framesToDecode = new Set<number>()
+                // Build GOP ranges for each event independently
+                // This prevents decoding errors from non-contiguous samples
+                const gopRanges: Array<{ start: number; end: number; eventIndex: number }> = []
 
-                for (const event of events) {
-                    // Find sample corresponding to timestamp
-                    // Timescale is usually track.timescale (e.g. 30000 or 90000)
-                    // Sample cts/dts are in timescale units.
+                for (let eventIdx = 0; eventIdx < events.length; eventIdx++) {
+                    const event = events[eventIdx]
                     const targetTime = event.timestamp_seconds * videoTrack.timescale
 
-                    // Simple search for nearest sample
+                    // Find nearest sample
                     let nearestSampleIndex = -1
                     let minDiff = Infinity
 
                     for (let i = 0; i < samples.length; i++) {
-                        // cts is composition time stamp
                         const diff = Math.abs(samples[i].cts - targetTime)
                         if (diff < minDiff) {
                             minDiff = diff
@@ -198,57 +214,108 @@ export function useHighPerformanceScreenshots() {
                     }
 
                     if (nearestSampleIndex !== -1) {
-                        // Strategy: Decode the full GOP (Group of Pictures) containing the target frame.
-                        // Strategy: Decode from preceding Keyframe up to the Target sample.
-                        // We don't need to decode the whole GOP if we only want one frame.
-                        // Stopping at nearestSampleIndex should stay within valid reference chain if we process linearly.
+                        // Find preceding keyframe
                         let decodeStartIndex = nearestSampleIndex
                         while (decodeStartIndex >= 0 && !samples[decodeStartIndex].is_sync) {
                             decodeStartIndex--
                         }
 
                         if (decodeStartIndex >= 0) {
-                            // Mark all samples from decodeStartIndex up to nearestSampleIndex (inclusive)
-                            for (let j = decodeStartIndex; j <= nearestSampleIndex; j++) {
-                                framesToDecode.add(j)
-                            }
+                            gopRanges.push({
+                                start: decodeStartIndex,
+                                end: nearestSampleIndex,
+                                eventIndex: eventIdx
+                            })
                         }
                     }
                 }
 
-                // Sort indices to decode in order
-                const indices = Array.from(framesToDecode).sort((a, b) => a - b)
+                console.log(`Processing ${gopRanges.length} GOP ranges for ${events.length} events`)
 
-                for (const idx of indices) {
-                    const sample = samples[idx]
-                    const type = sample.is_sync ? 'key' : 'delta'
+                // Sort GOP ranges by start index to process in order
+                gopRanges.sort((a, b) => a.start - b.start)
 
-                    const chunk = new EncodedVideoChunk({
-                        type: type,
-                        timestamp: (sample.cts * 1_000_000) / sample.timescale, // Microseconds
-                        duration: (sample.duration * 1_000_000) / sample.timescale,
-                        data: sample.data
-                    })
+                // Process GOP ranges, flushing only when necessary
+                let lastProcessedIndex = -1
+
+                for (let rangeIdx = 0; rangeIdx < gopRanges.length; rangeIdx++) {
+                    if (isFinished) break
+
+                    const range = gopRanges[rangeIdx]
+                    const firstSample = samples[range.start]
+
+                    // Validate keyframe
+                    if (!firstSample.is_sync) {
+                        console.warn(`GOP range ${range.start}-${range.end} doesn't start with keyframe (is_sync=false). Skipping event at ${events[range.eventIndex].timestamp_seconds}s`)
+                        continue
+                    }
+
+                    // Determine if we need to flush before this GOP
+                    // Flush if: 1) First GOP, 2) Gap in sequence, or 3) Previous range failed
+                    const needsFlush = lastProcessedIndex === -1 || range.start > lastProcessedIndex + 1
 
                     try {
-                        if (videoDecoder?.state === 'configured') {
-                            videoDecoder?.decode(chunk)
+                        // Flush if there's a gap in the decode sequence
+                        if (needsFlush && videoDecoder?.state === 'configured') {
+                            await videoDecoder.flush()
                         }
-                    } catch (e) {
-                        console.error('Error decoding chunk', idx, e)
+
+                        // Decode all samples in this GOP range
+                        for (let idx = range.start; idx <= range.end; idx++) {
+                            if (isFinished) break
+
+                            const sample = samples[idx]
+                            const type = sample.is_sync ? 'key' : 'delta'
+
+                            const chunk = new EncodedVideoChunk({
+                                type: type,
+                                timestamp: (sample.cts * 1_000_000) / sample.timescale,
+                                duration: (sample.duration * 1_000_000) / sample.timescale,
+                                data: sample.data
+                            })
+
+                            if (videoDecoder?.state === 'configured') {
+                                videoDecoder.decode(chunk)
+                            }
+                        }
+
+                        lastProcessedIndex = range.end
+
+                        // Flush after last GOP or before a gap
+                        const isLastRange = rangeIdx === gopRanges.length - 1
+                        const nextRangeHasGap = !isLastRange && gopRanges[rangeIdx + 1].start > range.end + 1
+
+                        if ((isLastRange || nextRangeHasGap) && videoDecoder?.state === 'configured') {
+                            await videoDecoder.flush()
+                        }
+
+                    } catch (e: any) {
+                        console.error(`Error processing GOP range ${range.start}-${range.end} (event at ${events[range.eventIndex].timestamp_seconds}s):`, e.message)
+
+                        // Log debug info
+                        console.error('Debug info:', {
+                            rangeStart: range.start,
+                            rangeEnd: range.end,
+                            firstSampleIsSync: firstSample.is_sync,
+                            needsFlush,
+                            lastProcessedIndex,
+                            decoderState: videoDecoder?.state
+                        })
+
+                        // Force flush to reset decoder state
+                        try {
+                            if (videoDecoder?.state === 'configured') {
+                                await videoDecoder.flush()
+                            }
+                            lastProcessedIndex = -1 // Force flush before next range
+                        } catch (flushError) {
+                            console.warn('Failed to flush decoder after error:', flushError)
+                        }
                     }
                 }
 
-                // If we have processed all relevant samples, we might need to flush
-                videoDecoder?.flush().then(() => {
-                    // Flush complete.
-                    finish()
-                }).catch(e => {
-                    if (!e.message?.includes('closed')) {
-                        console.error('Flush error:', e)
-                    }
-                    finish()
-                })
+                // Final finish
+                finish()
             }
 
             const readChunk = (off: number) => {
@@ -282,8 +349,12 @@ export function useHighPerformanceScreenshots() {
                     if (nextOffset < file.size) {
                         readChunk(nextOffset)
                     } else {
+                        fileFullyRead = true
                         mp4boxfile.flush()
-                        processAllSamples()
+                        // Only process if onReady has fired (prevents race condition)
+                        if (readyFired) {
+                            processAllSamples()
+                        }
                     }
                 }
                 reader.onloadend = () => {
@@ -313,39 +384,57 @@ export function useHighPerformanceScreenshots() {
 
 // Helper to extract AVC/HEVC description (AVCC/HVCC)
 function toDesc(track: any) {
+    if (!track) {
+        console.warn('toDesc called with null/undefined track')
+        return undefined
+    }
+
     const entry = track.mdia?.minf?.stbl?.stsd?.entries[0]
 
-    if (entry) {
-        // Handle AVC (H.264)
-        if (entry.avcC) {
-            console.log('Found avcC box, extracting description...')
-            try {
-                // @ts-ignore
-                const stream = new MP4Box.DataStream(undefined, 0, MP4Box.DataStream.BIG_ENDIAN)
-                entry.avcC.write(stream)
-                // Remove the 4 bytes size and 4 bytes 'avcC' header because write() outputs the whole box
-                // We want the AVCDecoderConfigurationRecord which follows
-                return new Uint8Array(stream.buffer.slice(8))
-            } catch (e) {
-                console.error('Error writing avcC to stream:', e)
+    if (!entry) {
+        console.warn('No stsd entry found in track structure')
+        return undefined
+    }
+
+    // Handle AVC (H.264)
+    if (entry.avcC) {
+        console.log('Found avcC box, extracting description...')
+        try {
+            // @ts-ignore
+            const stream = new MP4Box.DataStream(undefined, 0, MP4Box.DataStream.BIG_ENDIAN)
+            entry.avcC.write(stream)
+            // Remove the 4 bytes size and 4 bytes 'avcC' header because write() outputs the whole box
+            // We want the AVCDecoderConfigurationRecord which follows
+            const desc = new Uint8Array(stream.buffer.slice(8))
+            if (desc.length === 0) {
+                console.error('avcC description is empty')
                 return undefined
             }
+            return desc
+        } catch (e) {
+            console.error('Error writing avcC to stream:', e)
+            return undefined
         }
-        // Handle HEVC (H.265)
-        else if (entry.hvcC) {
-            console.log('Found hvcC box, extracting description...')
-            try {
-                // @ts-ignore
-                const stream = new MP4Box.DataStream(undefined, 0, MP4Box.DataStream.BIG_ENDIAN)
-                entry.hvcC.write(stream)
-                return new Uint8Array(stream.buffer.slice(8))
-            } catch (e) {
-                console.error('Error writing hvcC to stream:', e)
+    }
+    // Handle HEVC (H.265)
+    else if (entry.hvcC) {
+        console.log('Found hvcC box, extracting description...')
+        try {
+            // @ts-ignore
+            const stream = new MP4Box.DataStream(undefined, 0, MP4Box.DataStream.BIG_ENDIAN)
+            entry.hvcC.write(stream)
+            const desc = new Uint8Array(stream.buffer.slice(8))
+            if (desc.length === 0) {
+                console.error('hvcC description is empty')
                 return undefined
             }
+            return desc
+        } catch (e) {
+            console.error('Error writing hvcC to stream:', e)
+            return undefined
         }
     }
 
-    console.warn('No avcC or hvcC box found in track entry:', entry)
+    console.warn('No avcC or hvcC box found in track entry. Available boxes:', Object.keys(entry))
     return undefined
 }
