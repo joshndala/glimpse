@@ -14,6 +14,7 @@ export interface VideoEvent {
 export function useVideoScreenshots() {
     const videoElement = ref<HTMLVideoElement | null>(null)
     const canvasElement = ref<HTMLCanvasElement | null>(null)
+    const loadingProgress = ref(0)
 
     /**
      * Initialize hidden video and canvas elements
@@ -37,6 +38,7 @@ export function useVideoScreenshots() {
      * Load video file into the hidden video element
      */
     const loadVideo = (file: File): Promise<void> => {
+        loadingProgress.value = 0
         return new Promise((resolve, reject) => {
             initializeElements()
 
@@ -49,6 +51,7 @@ export function useVideoScreenshots() {
             videoElement.value.src = url
 
             videoElement.value.onloadedmetadata = () => {
+                loadingProgress.value = 10
                 resolve()
             }
 
@@ -119,10 +122,15 @@ export function useVideoScreenshots() {
    */
     const addScreenshotsToEvents = async (events: VideoEvent[]): Promise<VideoEvent[]> => {
         const eventsWithScreenshots: VideoEvent[] = []
+        loadingProgress.value = 10
 
         for (let i = 0; i < events.length; i++) {
             const event = events[i]
             console.log(`Extracting screenshot ${i + 1}/${events.length} at ${event.timestamp_seconds}s...`)
+
+            // Calculate progress from 10% to 100%
+            const progress = 10 + Math.round(((i + 1) / events.length) * 90)
+            loadingProgress.value = progress
 
             try {
                 const screenshot = await captureScreenshot(event.timestamp_seconds)
@@ -157,12 +165,14 @@ export function useVideoScreenshots() {
             canvasElement.value.remove()
             canvasElement.value = null
         }
+        loadingProgress.value = 0
     }
 
     return {
         loadVideo,
         captureScreenshot,
         addScreenshotsToEvents,
-        cleanup
+        cleanup,
+        loadingProgress
     }
 }

@@ -27,3 +27,14 @@ dist-ssr
 .env.local
 .env.*.local
 .env
+.env.local
+.env.*.local
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Binaries
+glimpse-backend
