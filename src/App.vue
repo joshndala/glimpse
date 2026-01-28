@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useGeminiAnalysis } from './composables/useGeminiAnalysis'
-import { useVideoScreenshots, type VideoEvent } from './composables/useVideoScreenshots'
+import { useHighPerformanceScreenshots, type VideoEvent } from './composables/useHighPerformanceScreenshots'
 
 const { analyzeVideo, isAnalyzing, error: analysisError, uploadProgress } = useGeminiAnalysis()
-const { loadVideo, addScreenshotsToEvents, cleanup, loadingProgress } = useVideoScreenshots()
+const { extractScreenshots, isProcessing: isExtracting, progress: extractProgress, error: extractError } = useHighPerformanceScreenshots()
+const loadingProgress = computed(() => isExtracting.value ? extractProgress.value : 0)
+
+// Helper shim to maintain template compatibility for now, or we can update the template logic later.
+// But mostly we just need `extractScreenshots` to replace `addScreenshotsToEvents`
+const loadVideo = async (f: File) => { return Promise.resolve() } // Metadata loading happens inside extract now
+const cleanup = () => {} 
 
 const isDragging = ref(false)
 const selectedFile = ref<File | null>(null)
@@ -67,7 +73,7 @@ const startAnalysis = async () => {
 
     // Step 3: Extract screenshots
     currentStep.value = 'extracting'
-    const eventsWithScreenshots = await addScreenshotsToEvents(analyzedEvents)
+    const eventsWithScreenshots = await extractScreenshots(selectedFile.value, analyzedEvents)
     
     events.value = eventsWithScreenshots
     currentStep.value = 'complete'
@@ -89,10 +95,7 @@ const reset = () => {
 const statusMessage = computed(() => {
   switch (currentStep.value) {
     case 'analyzing':
-      if (loadingProgress.value < 60) {
-        return `Loading video processing engine... ${loadingProgress.value}%`
-      }
-      return `Analyzing video with Gemini AI... ${uploadProgress.value}%`
+      return `Analyzing video with Gemini AI... ${uploadProgress.value > 0 && uploadProgress.value < 100 ? uploadProgress.value + '%' : ''}`
     case 'extracting':
       return `Extracting screenshots... ${loadingProgress.value}%`
     case 'complete':
