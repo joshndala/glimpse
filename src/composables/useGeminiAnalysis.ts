@@ -1,5 +1,31 @@
 import { ref } from 'vue'
-import type { VideoEvent } from './useVideoScreenshots'
+
+// New report-style types
+export interface PlayerInfo {
+    jersey_number: string
+    position: string
+    team: string
+}
+
+export interface KeyHighlight {
+    timestamp_seconds: number
+    title: string
+    description: string
+    screenshot?: string // Added by frontend after extraction
+}
+
+export interface TimelineMoment {
+    timestamp_seconds: number
+    moment: string
+}
+
+export interface PerformanceReport {
+    player_info: PlayerInfo
+    summary: string
+    key_highlights: KeyHighlight[]
+    timeline: TimelineMoment[]
+    performance_rating: string
+}
 
 export function useGeminiAnalysis() {
     const isAnalyzing = ref(false)
@@ -8,8 +34,9 @@ export function useGeminiAnalysis() {
 
     /**
      * Analyze video by sending it to the Go backend
+     * Returns a structured performance report
      */
-    const analyzeVideo = async (file: File, customPrompt?: string): Promise<VideoEvent[]> => {
+    const analyzeVideo = async (file: File, customPrompt?: string): Promise<PerformanceReport> => {
         isAnalyzing.value = true
         error.value = null
         uploadProgress.value = 0
@@ -21,8 +48,7 @@ export function useGeminiAnalysis() {
                 formData.append('prompt', customPrompt)
             }
 
-            // Mock progress - since fetch doesn't support upload progress out of the box easily without XHR
-            // We'll just simulate it or set it to "uploading"
+            // Progress simulation
             const progressInterval = setInterval(() => {
                 if (uploadProgress.value < 90) {
                     uploadProgress.value += 10
@@ -43,14 +69,14 @@ export function useGeminiAnalysis() {
                 throw new Error(`Analysis failed: ${errorText}`)
             }
 
-            const events: VideoEvent[] = await response.json()
+            const report: PerformanceReport = await response.json()
 
-            // Validate response structure (backend should ensure this, but double check)
-            if (!Array.isArray(events)) {
-                throw new Error('Invalid response from server: expected an array')
+            // Validate response structure
+            if (!report.player_info || !report.summary || !report.key_highlights) {
+                throw new Error('Invalid response from server: missing required fields')
             }
 
-            return events
+            return report
 
         } catch (err) {
             error.value = err instanceof Error ? err.message : 'Unknown error occurred'

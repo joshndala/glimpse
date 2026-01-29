@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: glimpse-backend
+    runtime: go
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg
+      go build -o glimpse-backend
+    startCommand: ./glimpse-backend
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://glimpse.vercel.app,http://localhost:5173
+      - key: PORT
+        value: 8080
