@@ -8,6 +8,10 @@ RUN apk add --no-cache git
 
 # Copy go mod files
 COPY backend/go.mod backend/go.sum ./
+
+# Enable auto-download of required Go toolchain
+ENV GOTOOLCHAIN=auto
+
 RUN go mod download
 
 # Copy source code
