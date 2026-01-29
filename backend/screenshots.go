@@ -73,27 +73,13 @@ func handleExtractScreenshots() http.HandlerFunc {
 
 		log.Printf("Processing video: %s, extracting %d screenshots", tempPath, len(timestamps))
 
-		// Always convert video to standard format for reliable extraction
-		// This ensures fragmented MP4s (from YouTube/streaming) work correctly
-		log.Printf("Converting video to standard format for reliable extraction...")
-		convertedPath, err := convertEntireVideo(tempPath)
+		// DISABLED: Full video conversion uses too much memory on Render (512MB limit)
+		// Instead, we'll use per-frame extraction strategies that convert only small segments
 		videoToUse := tempPath
-		if err != nil {
-			log.Printf("Video conversion failed, trying original: %v", err)
-		} else {
-			videoToUse = convertedPath
-			defer os.Remove(convertedPath) // Clean up converted file
-			log.Printf("Video converted successfully: %s", convertedPath)
-		}
 
-		// Get video duration to validate timestamps
-		duration, err := getVideoDuration(videoToUse)
-		if err != nil {
-			log.Printf("Warning: Could not get video duration: %v", err)
-			duration = 999999 // Use a large number if we can't get duration
-		} else {
-			log.Printf("Video duration: %.2f seconds", duration)
-		}
+		// DISABLED: Skip duration check to reduce processing time
+		// We'll attempt to extract all timestamps and handle failures gracefully
+		duration := 999999.0 // Use a large number to allow all timestamps
 
 		// Filter out timestamps beyond video duration
 		validTimestamps := make([]float64, 0, len(timestamps))
