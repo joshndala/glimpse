@@ -50,6 +50,7 @@ func main() {
 	}))
 
 	r.Post("/upload", handleUpload(apiKey))
+	r.Post("/extract-screenshots", handleExtractScreenshots())
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -65,9 +66,9 @@ func main() {
 func handleUpload(apiKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Limit upload size (e.g., 100MB)
-		r.Body = http.MaxBytesReader(w, r.Body, 100<<20)
+		r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
 
-		if err := r.ParseMultipartForm(100 << 20); err != nil {
+		if err := r.ParseMultipartForm(200 << 20); err != nil {
 			http.Error(w, "File too large or invalid multipart form", http.StatusBadRequest)
 			return
 		}
@@ -143,29 +144,53 @@ func handleUpload(apiKey string) http.HandlerFunc {
 		model := client.GenerativeModel("gemini-3-flash-preview")
 		model.ResponseMIMEType = "application/json"
 
-		systemPrompt := `You are a professional video analyst.
-Return your response as a valid JSON array containing objects with the following structure:
-[
-  {
-    "timestamp_seconds": <number>,
-    "title": "<concise title for this moment>",
-    "description": "<detailed 2-3 sentence description of what's happening>",
-    "insights": "<optional analytical insight or context>"
-  }
-]
+		systemPrompt := `You are a professional sports video analyst specializing in player performance analysis.
+
+CRITICAL: This video is likely a player highlight reel. Your PRIMARY task is to:
+1. Identify which player is the main focus (by frequency of appearance, jersey number, camera focus)
+2. Generate a structured performance report for that player
+
+Return your response as a valid JSON object with this structure:
+{
+  "player_info": {
+    "jersey_number": "<jersey number if visible>",
+    "position": "<detected position based on play style>",
+    "team": "<team name if visible>"
+  },
+  "summary": "<2-3 paragraph narrative summary of the player's overall performance in this video. Write in a professional sports analyst style, discussing their key contributions, playing style, and standout moments.>",
+  "key_highlights": [
+    {
+      "timestamp_seconds": <number>,
+      "title": "<brief title>",
+      "description": "<1-2 sentence description>"
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp_seconds": <number>,
+      "moment": "<brief description of what happens>"
+    }
+  ],
+  "performance_rating": "<rating from 1-10 with brief justification>"
+}
+
+Guidelines:
+- key_highlights: Include ONLY 3-5 of the MOST important moments (these will have screenshots)
+- timeline: Include ALL notable moments with timestamps for reference (10-15 items)
+- summary: Write like a professional sports journalist, flowing narrative not bullet points
+- Mention jersey numbers when identifying players
+- Focus on the main player throughout
+
 Important:
-- Return ONLY the JSON array, no additional text
-- timestamp_seconds must be a number (not a string)
-- title should be brief and descriptive (max 5-7 words)
-- description should provide rich detail about the scene, actions, and context`
+- Return ONLY the JSON object, no additional text
+- All timestamp_seconds must be numbers (not strings)`
 
 		model.SystemInstruction = genai.NewUserContent(genai.Text(systemPrompt))
 
-		userPromptText := "Analyze this video and identify key moments."
+		userPromptText := "Analyze this sports highlight video and generate a comprehensive performance report. Identify the main player being showcased and provide a narrative summary, 3-5 key highlights for screenshots, and a full timeline of moments."
 		if customPrompt != "" {
-			userPromptText = fmt.Sprintf("Analyze this video and find moments matching this request: '%s'. Return the results as a JSON array.", customPrompt)
+			userPromptText = fmt.Sprintf("Analyze this sports video focusing on: '%s'. Generate a comprehensive performance report with summary, key highlights (3-5), and timeline.", customPrompt)
 		}
-
 		resp, err := model.GenerateContent(ctx, genai.Text(userPromptText), genai.FileData{URI: uploadFile.URI})
 		if err != nil {
 			log.Printf("Error generating content: %v", err)
