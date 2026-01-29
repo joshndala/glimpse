@@ -49,6 +49,12 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// Health check endpoint
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	r.Post("/upload", handleUpload(apiKey))
 	r.Post("/extract-screenshots", handleExtractScreenshots())
 
