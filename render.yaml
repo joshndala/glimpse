@@ -10,6 +10,6 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: https://glimpse.vercel.app,http://localhost:5173
+        value: https://hylite-studio.vercel.app,http://localhost:5173
       - key: PORT
         value: 8080
