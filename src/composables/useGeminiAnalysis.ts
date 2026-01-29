@@ -71,9 +71,17 @@ export function useGeminiAnalysis() {
 
             const report: PerformanceReport = await response.json()
 
-            // Validate response structure
-            if (!report.player_info || !report.summary || !report.key_highlights) {
-                throw new Error('Invalid response from server: missing required fields')
+            // Validate response structure with detailed error messages
+            console.log('Received report from backend:', report)
+
+            const missingFields: string[] = []
+            if (!report.player_info) missingFields.push('player_info')
+            if (!report.summary) missingFields.push('summary')
+            if (!report.key_highlights) missingFields.push('key_highlights')
+
+            if (missingFields.length > 0) {
+                console.error('Invalid response structure:', report)
+                throw new Error(`Invalid response from server: missing fields: ${missingFields.join(', ')}`)
             }
 
             return report

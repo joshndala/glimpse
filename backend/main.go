@@ -226,6 +226,8 @@ Important:
 		jsonResponse = strings.TrimPrefix(jsonResponse, "```")
 		jsonResponse = strings.TrimSuffix(jsonResponse, "```")
 
+		log.Printf("Sending JSON response (first 500 chars): %s", jsonResponse[:min(500, len(jsonResponse))])
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(jsonResponse))
 	}
