@@ -20,7 +20,8 @@ func handleExtractScreenshots() http.HandlerFunc {
 		// Limit upload size (100MB)
 		r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
 
-		if err := r.ParseMultipartForm(200 << 20); err != nil {
+		// Use 10MB memory buffer - larger uploads spill to temp files on disk
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			http.Error(w, "File too large or invalid multipart form", http.StatusBadRequest)
 			return
 		}
@@ -213,6 +214,8 @@ func extractFrameWithConversion(videoPath string, timestamp float64) (string, er
 		"-t", "5", // Only convert 5 seconds
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
+		"-tune", "zerolatency", // Reduces memory by disabling lookahead
+		"-threads", "1", // Single thread = less memory
 		"-an", // No audio
 		"-y",
 		convertedPath,
@@ -281,12 +284,20 @@ func convertEntireVideo(videoPath string) (string, error) {
 
 	// Convert video to standard MP4 format
 	// Use fast settings for speed while maintaining compatibility
+	// Low-memory FFmpeg settings:
+	// - ultrafast preset: minimal CPU/memory for encoding
+	// - zerolatency tune: disables frame lookahead buffer
+	// - threads 1: single thread reduces peak memory
+	// - bufsize 0: no rate control buffer
 	convertCmd := exec.Command("ffmpeg",
 		"-i", videoPath,
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
-		"-crf", "23",
-		"-an", // No audio needed for screenshots
+		"-tune", "zerolatency",
+		"-threads", "1",
+		"-crf", "28", // Higher CRF = less work, lower quality (fine for screenshots)
+		"-bufsize", "0",
+		"-an",
 		"-y",
 		convertedPath,
 	)

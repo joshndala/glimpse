@@ -68,7 +68,9 @@ func handleUpload(apiKey string) http.HandlerFunc {
 		// Limit upload size (e.g., 100MB)
 		r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
 
-		if err := r.ParseMultipartForm(200 << 20); err != nil {
+		// Use 10MB memory buffer - larger uploads spill to temp files on disk
+		// This keeps RAM usage low while still allowing 200MB uploads
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			http.Error(w, "File too large or invalid multipart form", http.StatusBadRequest)
 			return
 		}
