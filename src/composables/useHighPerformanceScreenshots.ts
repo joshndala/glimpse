@@ -25,7 +25,7 @@ export function useHighPerformanceScreenshots() {
             formData.append('timestamps', JSON.stringify(timestamps))
 
             // Get backend URL from environment or use default
-            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080'
+            const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
             // Upload to backend
             const response = await fetch(`${backendUrl}/extract-screenshots`, {
