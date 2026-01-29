@@ -1,0 +1,14 @@
+# Don't include these in Docker build
+.git
+.gitignore
+.env
+node_modules
+dist
+*.log
+README.md
+frontend
+src
+public
+*.md
+.vscode
+.idea
