@@ -1,26 +1,33 @@
-# Hylite Studio - AI Sports Performance Analyst
+# Hylite Studio - Sports Recruitment Auditor
 
-A professional-grade sports video analysis platform powered by **Gemini 3.0**. Hylite Studio automatically analyzes gameplay footage to identify players, generate performance reports, and extract high-quality highlight screenshots using a robust **Go** backend with **FFmpeg**.
+A professional-grade sports recruitment audit platform powered by **Gemini 2.0**. Hylite Studio analyzes player case files—videos, stat sheets, reports, or any combination—to help scouts and recruiters make informed decisions with AI-powered cross-referencing and analysis.
 
 ## Features
 
-- 🏀 **AI Player Identification** - Automatically identifies key players by jersey number and position.
-- 📊 **Performance Reports** - Generates professional-grade summaries and performance ratings (1-10).
-- 🎬 **Smart Highlight Extraction** - Uses FFmpeg to extract high-quality screenshots for key moments.
-- ⏱️ **Match Timeline** - diverse breakdown of every notable event in the video.
+- 🔍 **Audit Mode** - Cross-reference claims in reports against video evidence to verify player statistics.
+- � **Scout Mode** - Analyze gameplay footage to evaluate player skills, potential, and performance from scratch.
+- 📊 **Analyst Mode** - Review statistical reports to identify red flags, outliers, and impressive metrics.
+- 📁 **Multi-File Support** - Upload multiple videos and documents (PDFs, images, Excel) in a single case file.
+- 🎬 **Playlist Player** - Navigate between multiple videos with clickable timestamps that auto-switch and seek.
 - 🎨 **Premium UI** - Dark-themed, glassmorphic interface built with Vue 3 and Tailwind CSS.
 - ⚡ **High Performance** - Go backend handles heavy video processing efficiently.
 
-## Use Cases
+## How It Works
 
-### ⚽ Player Recruitment
-Upload raw match footage to generate instant scouting reports with key highlights for recruiters.
+Upload a player's case file and let AI determine the best analysis approach:
 
-### 🎥 Content Creation
-Quickly turn full game recordings into analyzed clips and summaries for social media or broadcast.
+| Mode | Triggered When | Purpose |
+|------|---------------|---------|
+| 🔍 **Audit** | Videos + Reports | Cross-reference claims against video evidence |
+| 👀 **Scout** | Videos only | Evaluate player from scratch |
+| 📊 **Analyst** | Reports only | Summarize stats, find red flags |
 
-### 📈 Coaching Analysis
-Review player performance with an automated timeline of every play, foul, and goal.
+The AI provides:
+- **Verdict** (Claims Verified / Discrepancies Found / etc.)
+- **Scout Rating** (1-10 scale for player potential)
+- **Key Moments** (Timestamped highlights with video index)
+- **Strengths & Weaknesses**
+- **Red Flags** (Concerns or inconsistencies)
 
 ## Tech Stack
 
@@ -33,7 +40,7 @@ Review player performance with an automated timeline of every play, foul, and go
 ### Backend
 - **Go** (Golang)
 - **Chi** (Router)
-- **GenAI Go SDK** (Gemini 3.0 Integration)
+- **GenAI Go SDK** (Gemini 2.0 Integration)
 - **FFmpeg** (Video Processing & Screenshot Extraction)
 
 ## Setup & Running
@@ -54,12 +61,12 @@ cd backend
 # Install Go dependencies
 go mod download
 
-# Create .env file (or set in environment)
-echo "GEMINI_API_KEY=your_api_key_here" > .env
-echo "ALLOWED_ORIGINS=http://localhost:5173" >> .env
+# Create .env file in repo root (or set in environment)
+echo "GEMINI_API_KEY=your_api_key_here" > ../.env
+echo "ALLOWED_ORIGINS=http://localhost:5173" >> ../.env
 
 # Run the server
-go run main.go
+go run .
 ```
 *Server runs on port 8080 by default.*
 
@@ -71,19 +78,57 @@ The frontend provides the user interface for uploading and viewing reports.
 # Install dependencies
 npm install
 
-# Create .env file
+# Create .env file (if not already created)
 echo "VITE_API_URL=http://localhost:8080" > .env
 
 # Run the development server
 npm run dev
 ```
 
-## How It Works
+## Usage
 
-1. **Upload**: User drags & drops a sports video (up to 200MB).
-2. **Analysis**: The Go backend uploads the video to **Gemini 3.0**, which acts as a professional sports analyst to generate a JSON report.
-3. **Extraction**: The backend uses **FFmpeg** to extract high-quality formatting screenshots at the exact timestamps identified by AI.
-4. **Presentation**: Results are displayed in a rich, interactive dashboard with player stats, narrative summary, and visual highlights.
+1. **Upload Files**: Drag and drop videos, PDFs, screenshots, or stat sheets into the Case File upload zone.
+2. **Automatic Mode Detection**: The system automatically selects Audit/Scout/Analyst mode based on what you upload.
+3. **AI Analysis**: Gemini analyzes the materials and generates a comprehensive report.
+4. **Review Results**: Navigate the playlist, click timestamps to jump to key moments, and review strengths/weaknesses.
+
+## API Endpoints
+
+### `POST /api/audit`
+Main endpoint for case file analysis.
+
+**Request:**
+- `videos[]` - Array of video files (optional)
+- `reports[]` - Array of report files: PDFs, images, Excel (optional)
+
+**Response:**
+```json
+{
+  "mode": "audit|scout|analyst",
+  "scout_rating": 8.5,
+  "verdict": "Claims Verified",
+  "summary": "...",
+  "key_moments": [
+    {
+      "video_index": 0,
+      "timestamp_seconds": 45,
+      "title": "...",
+      "description": "..."
+    }
+  ],
+  "red_flags": ["..."],
+  "strengths": ["..."],
+  "weaknesses": ["..."],
+  "player_info": {
+    "jersey_number": "23",
+    "position": "Forward",
+    "team": "..."
+  }
+}
+```
+
+### `POST /extract-screenshots`
+Extract screenshots from video at specific timestamps (legacy endpoint).
 
 ## Project Structure
 
@@ -95,11 +140,22 @@ hylite-studio/
 │   └── go.mod             # Go dependencies
 ├── src/                    # Vue 3 Frontend
 │   ├── composables/       # Logic (API calls, state)
+│   │   ├── useGeminiAnalysis.ts
+│   │   └── useHighPerformanceScreenshots.ts
 │   ├── App.vue            # Main UI
 │   └── style.css          # Tailwind directives
 ├── index.html
 └── package.json
 ```
+
+## Color Scheme
+
+- **Background**: `#0D1B2A` (Midnight Navy)
+- **Surface**: `#1B263B` (Dark Blue-Gray)
+- **Text**: `#F0F4F8` (Off-White)
+- **Brand Accent**: `#1878E5` (Blue)
+- **Success**: `#00C46A` (Green)
+- **Warning**: `#FF6B00` (Orange)
 
 ## License
 
