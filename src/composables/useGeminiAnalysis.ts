@@ -1,17 +1,38 @@
 import { ref } from 'vue'
 
-// New report-style types
-export interface PlayerInfo {
-    jersey_number: string
-    position: string
-    team: string
-}
-
-export interface KeyHighlight {
+// Types for the new audit response
+export interface KeyMoment {
+    video_index: number
     timestamp_seconds: number
     title: string
     description: string
     screenshot?: string // Added by frontend after extraction
+}
+
+export interface PlayerInfo {
+    jersey_number?: string
+    position?: string
+    team?: string
+}
+
+export interface AuditReport {
+    mode: 'audit' | 'scout' | 'analyst'
+    scout_rating?: number
+    verdict: string
+    summary: string
+    key_moments: KeyMoment[]
+    red_flags?: string[]
+    strengths?: string[]
+    weaknesses?: string[]
+    player_info?: PlayerInfo
+}
+
+// Legacy types for backwards compatibility
+export interface KeyHighlight {
+    timestamp_seconds: number
+    title: string
+    description: string
+    screenshot?: string
 }
 
 export interface TimelineMoment {
@@ -33,30 +54,36 @@ export function useGeminiAnalysis() {
     const uploadProgress = ref(0)
 
     /**
-     * Analyze video by sending it to the Go backend
-     * Returns a structured performance report
+     * Audit a case file with videos and/or reports
+     * Returns a structured audit report
      */
-    const analyzeVideo = async (file: File, customPrompt?: string): Promise<PerformanceReport> => {
+    const auditCaseFile = async (videos: File[], reports: File[]): Promise<AuditReport> => {
         isAnalyzing.value = true
         error.value = null
         uploadProgress.value = 0
 
         try {
             const formData = new FormData()
-            formData.append('video', file)
-            if (customPrompt) {
-                formData.append('prompt', customPrompt)
+
+            // Add videos
+            for (const video of videos) {
+                formData.append('videos[]', video)
+            }
+
+            // Add reports
+            for (const report of reports) {
+                formData.append('reports[]', report)
             }
 
             // Progress simulation
             const progressInterval = setInterval(() => {
                 if (uploadProgress.value < 90) {
-                    uploadProgress.value += 10
+                    uploadProgress.value += 5
                 }
-            }, 500)
+            }, 1000)
 
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-            const response = await fetch(`${apiUrl}/upload`, {
+            const response = await fetch(`${apiUrl}/api/audit`, {
                 method: 'POST',
                 body: formData,
             })
@@ -66,18 +93,18 @@ export function useGeminiAnalysis() {
 
             if (!response.ok) {
                 const errorText = await response.text()
-                throw new Error(`Analysis failed: ${errorText}`)
+                throw new Error(`Audit failed: ${errorText}`)
             }
 
-            const report: PerformanceReport = await response.json()
+            const report: AuditReport = await response.json()
 
-            // Validate response structure with detailed error messages
-            console.log('Received report from backend:', report)
+            // Validate response structure
+            console.log('Received audit report from backend:', report)
 
             const missingFields: string[] = []
-            if (!report.player_info) missingFields.push('player_info')
+            if (!report.mode) missingFields.push('mode')
+            if (!report.verdict) missingFields.push('verdict')
             if (!report.summary) missingFields.push('summary')
-            if (!report.key_highlights) missingFields.push('key_highlights')
 
             if (missingFields.length > 0) {
                 console.error('Invalid response structure:', report)
@@ -95,7 +122,7 @@ export function useGeminiAnalysis() {
     }
 
     return {
-        analyzeVideo,
+        auditCaseFile,
         isAnalyzing,
         error,
         uploadProgress
