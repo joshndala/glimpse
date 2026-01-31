@@ -84,9 +84,6 @@ func main() {
 	// New audit endpoint
 	r.Post("/api/audit", handleAudit(apiKey))
 
-	// Keep screenshot extraction for now
-	r.Post("/extract-screenshots", handleExtractScreenshots())
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

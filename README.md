@@ -41,19 +41,17 @@ The AI provides:
 - **Go** (Golang)
 - **Chi** (Router)
 - **GenAI Go SDK** (Gemini 2.0 Integration)
-- **FFmpeg** (Video Processing & Screenshot Extraction)
 
 ## Setup & Running
 
 ### Prerequisites
 - Node.js (v18+)
 - Go (v1.21+)
-- FFmpeg installed and available in system PATH
 - Google Cloud API Key (with Gemini access)
 
 ### 1. Backend Setup
 
-The backend handles video uploads, Gemini analysis, and FFmpeg processing.
+The backend handles video uploads and Gemini analysis.
 
 ```bash
 cd backend
@@ -127,21 +125,16 @@ Main endpoint for case file analysis.
 }
 ```
 
-### `POST /extract-screenshots`
-Extract screenshots from video at specific timestamps (legacy endpoint).
-
 ## Project Structure
 
 ```
 hylite-studio/
 ├── backend/                # Go Backend
 │   ├── main.go            # Server & Gemini integration
-│   ├── screenshots.go     # FFmpeg screenshot extraction logic
 │   └── go.mod             # Go dependencies
 ├── src/                    # Vue 3 Frontend
 │   ├── composables/       # Logic (API calls, state)
-│   │   ├── useGeminiAnalysis.ts
-│   │   └── useHighPerformanceScreenshots.ts
+│   │   └── useGeminiAnalysis.ts
 │   ├── App.vue            # Main UI
 │   └── style.css          # Tailwind directives
 ├── index.html
