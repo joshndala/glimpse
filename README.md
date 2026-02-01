@@ -1,6 +1,6 @@
 # Hylite Studio - Sports Recruitment Auditor
 
-A professional-grade sports recruitment audit platform powered by **Gemini 2.0**. Hylite Studio analyzes player case files—videos, stat sheets, reports, or any combination—to help scouts and recruiters make informed decisions with AI-powered cross-referencing and analysis.
+A professional-grade sports recruitment audit platform powered by **Gemini 3.0**. Hylite Studio analyzes player case files—videos, stat sheets, reports, or any combination—to help scouts and recruiters make informed decisions with AI-powered cross-referencing and analysis.
 
 ## Features
 
@@ -40,7 +40,7 @@ The AI provides:
 ### Backend
 - **Go** (Golang)
 - **Chi** (Router)
-- **GenAI Go SDK** (Gemini 2.0 Integration)
+- **GenAI Go SDK** (Gemini 3.0 Integration)
 
 ## Setup & Running
 
